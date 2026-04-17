@@ -1,21 +1,17 @@
+const deck = document.querySelector(".deck");
 const sections = [...document.querySelectorAll("[data-section]")];
 const navLinks = [...document.querySelectorAll(".deck-nav__link")];
 const currentSection = document.querySelector("[data-current-section]");
 const totalSections = document.querySelector("[data-total-sections]");
 
+let activeSectionId = null;
+let scrollTicking = false;
+
 if (totalSections) {
   totalSections.textContent = String(sections.length).padStart(2, "0");
 }
 
-const revealSection = (section) => {
-  if (!section) {
-    return;
-  }
-
-  section.classList.add("is-visible");
-};
-
-const setActiveSection = (id) => {
+const updateNav = (id) => {
   const index = sections.findIndex((section) => section.id === id);
 
   if (index === -1) {
@@ -32,52 +28,100 @@ const setActiveSection = (id) => {
   }
 };
 
-const observer = new IntersectionObserver(
-  (entries) => {
-    entries.forEach((entry) => {
-      if (!entry.isIntersecting) {
-        return;
-      }
+const setActiveSection = (id) => {
+  if (!id || id === activeSectionId) {
+    return;
+  }
 
-      revealSection(entry.target);
-      setActiveSection(entry.target.id);
-    });
-  },
-  {
-    threshold: 0.28,
-    rootMargin: "-8% 0px -24% 0px",
-  },
-);
+  sections.forEach((section) => {
+    section.classList.toggle("is-visible", section.id === id);
+  });
 
-sections.forEach((section) => {
-  revealSection(section);
-  observer.observe(section);
-});
+  updateNav(id);
+  activeSectionId = id;
+};
 
-const getNearestSectionIndex = () => {
-  let nearestIndex = 0;
+const getReferenceTop = () => deck?.getBoundingClientRect().top ?? 0;
+
+const getNearestSection = () => {
+  let nearestSection = sections[0] ?? null;
   let nearestDistance = Number.POSITIVE_INFINITY;
+  const referenceTop = getReferenceTop();
 
-  sections.forEach((section, index) => {
-    const distance = Math.abs(section.getBoundingClientRect().top);
+  sections.forEach((section) => {
+    const distance = Math.abs(section.getBoundingClientRect().top - referenceTop);
 
     if (distance < nearestDistance) {
       nearestDistance = distance;
-      nearestIndex = index;
+      nearestSection = section;
     }
   });
 
-  return nearestIndex;
+  return nearestSection;
 };
 
-const goToSection = (section) => {
+const syncActiveSection = () => {
+  const nearestSection = getNearestSection();
+
+  if (nearestSection) {
+    setActiveSection(nearestSection.id);
+  }
+};
+
+const requestSync = () => {
+  if (scrollTicking) {
+    return;
+  }
+
+  scrollTicking = true;
+
+  requestAnimationFrame(() => {
+    scrollTicking = false;
+    syncActiveSection();
+  });
+};
+
+const goToSection = (section, behavior = "smooth") => {
   if (!section) {
     return;
   }
 
-  revealSection(section);
   setActiveSection(section.id);
-  section.scrollIntoView({ behavior: "smooth", block: "start" });
+  section.scrollIntoView({ behavior, block: "start" });
+
+  if (window.location.hash !== `#${section.id}`) {
+    try {
+      history.replaceState(null, "", `#${section.id}`);
+    } catch {
+      window.location.hash = section.id;
+    }
+  }
+};
+
+const setupVideoPlayers = () => {
+  const players = [...document.querySelectorAll("[data-video-player]")];
+
+  players.forEach((player) => {
+    player.addEventListener("click", () => {
+      const src = player.getAttribute("data-video-src");
+      const title = player.getAttribute("data-video-title") || "Embedded video";
+      const frame = player.closest(".video-frame");
+
+      if (!src || !frame) {
+        return;
+      }
+
+      const iframe = document.createElement("iframe");
+      iframe.className = "video-frame__embed";
+      iframe.src = `${src}${src.includes("?") ? "&" : "?"}autoplay=1`;
+      iframe.title = title;
+      iframe.allow = "autoplay; encrypted-media; picture-in-picture";
+      iframe.allowFullscreen = true;
+      iframe.loading = "lazy";
+
+      frame.replaceChildren(iframe);
+    });
+  });
 };
 
 const initialTarget = window.location.hash
@@ -85,14 +129,19 @@ const initialTarget = window.location.hash
   : sections[0];
 
 if (initialTarget) {
-  revealSection(initialTarget);
   setActiveSection(initialTarget.id);
+
+  if (initialTarget !== sections[0]) {
+    requestAnimationFrame(() => {
+      goToSection(initialTarget, "auto");
+    });
+  }
 }
 
 navLinks.forEach((link) => {
   link.addEventListener("click", (event) => {
     const targetId = link.getAttribute("href");
-    const target = document.querySelector(targetId);
+    const target = targetId ? document.querySelector(targetId) : null;
 
     if (!target) {
       return;
@@ -103,8 +152,20 @@ navLinks.forEach((link) => {
   });
 });
 
+(deck || window).addEventListener("scroll", requestSync, { passive: true });
+window.addEventListener("resize", requestSync);
+window.addEventListener("hashchange", () => {
+  const target = window.location.hash
+    ? document.querySelector(window.location.hash)
+    : sections[0];
+
+  if (target) {
+    goToSection(target, "auto");
+  }
+});
+
 document.addEventListener("keydown", (event) => {
-  const isInteractive = ["INPUT", "TEXTAREA", "SELECT", "BUTTON"].includes(
+  const isInteractive = ["INPUT", "TEXTAREA", "SELECT", "BUTTON", "SUMMARY"].includes(
     document.activeElement?.tagName,
   );
 
@@ -112,7 +173,11 @@ document.addEventListener("keydown", (event) => {
     return;
   }
 
-  const currentIndex = getNearestSectionIndex();
+  const currentIndex = Math.max(
+    0,
+    sections.findIndex((section) => section.id === activeSectionId),
+  );
+
   let targetIndex = currentIndex;
 
   if (["ArrowDown", "PageDown", " "].includes(event.key)) {
@@ -131,26 +196,5 @@ document.addEventListener("keydown", (event) => {
   goToSection(sections[targetIndex]);
 });
 
-const videoPlayers = [...document.querySelectorAll("[data-video-player]")];
-
-videoPlayers.forEach((player) => {
-  player.addEventListener("click", () => {
-    const src = player.getAttribute("data-video-src");
-    const title = player.getAttribute("data-video-title") || "Embedded video";
-    const frame = player.closest(".video-frame");
-
-    if (!src || !frame) {
-      return;
-    }
-
-    const iframe = document.createElement("iframe");
-    iframe.className = "video-frame__embed";
-    iframe.src = `${src}${src.includes("?") ? "&" : "?"}autoplay=1`;
-    iframe.title = title;
-    iframe.allow = "autoplay; encrypted-media; picture-in-picture";
-    iframe.allowFullscreen = true;
-    iframe.loading = "lazy";
-
-    frame.replaceChildren(iframe);
-  });
-});
+setupVideoPlayers();
+requestSync();
