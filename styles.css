@@ -1380,6 +1380,7 @@ a {
 }
 
 .video-frame--deck {
+  position: relative;
   box-shadow: var(--shadow);
 }
 
@@ -1406,6 +1407,26 @@ a {
 .video-poster:focus-visible {
   outline: 2px solid var(--brand-frost);
   outline-offset: -2px;
+}
+
+.video-frame--covered .video-poster {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  transition:
+    opacity 300ms ease,
+    visibility 300ms ease;
+}
+
+.video-frame--covered.is-revealed .video-poster {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.video-frame--covered .video-frame__embed {
+  position: relative;
+  z-index: 1;
 }
 
 .feature-layout--full .video-frame__embed {
