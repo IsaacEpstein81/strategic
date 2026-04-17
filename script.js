@@ -130,3 +130,27 @@ document.addEventListener("keydown", (event) => {
   event.preventDefault();
   goToSection(sections[targetIndex]);
 });
+
+const videoPlayers = [...document.querySelectorAll("[data-video-player]")];
+
+videoPlayers.forEach((player) => {
+  player.addEventListener("click", () => {
+    const src = player.getAttribute("data-video-src");
+    const title = player.getAttribute("data-video-title") || "Embedded video";
+    const frame = player.closest(".video-frame");
+
+    if (!src || !frame) {
+      return;
+    }
+
+    const iframe = document.createElement("iframe");
+    iframe.className = "video-frame__embed";
+    iframe.src = `${src}${src.includes("?") ? "&" : "?"}autoplay=1`;
+    iframe.title = title;
+    iframe.allow = "autoplay; encrypted-media; picture-in-picture";
+    iframe.allowFullscreen = true;
+    iframe.loading = "lazy";
+
+    frame.replaceChildren(iframe);
+  });
+});
